@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volume Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        button {
+            font-size: 18px;
+            padding: 10px 20px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #volume-display {
+            font-size: 20px;
+            margin-top: 20px;
+        }
+        input{
+            width:300px;
+        }
+        h1{
+            margin-top: 100px;
+        }
+    </style>
+        <!-- <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script> -->
+</head>
+<body>
+    <h1>🔊 볼륨 조절</h1>
+    <button onclick="changeVolume('/volume/down/1')">🔻 1% 감소</button>
+    <button onclick="changeVolume('/volume/up/1')">🔺 1% 증가</button>
+    <button onclick="changeVolume('/volume/down/10')">🔻 10% 감소</button>
+    <button onclick="changeVolume('/volume/up/10')">🔺 10% 증가</button>
+    <p id="volume-display">현재 볼륨: <span id="volume">로드 중...</span></p>
+
+    <h1>🔚 자동 종료 설정</h1>
+    <input type="number" id="shutdown-time" placeholder="종료까지 시간(초) 입력(1시간:3600)" min="1" value="3600">
+    <button onclick="shutdown()">종료 예약</button>
+    <button onclick="cancel()">종료 취소</button>
+    <p id="remaining-time"></p> <!-- 남은 시간 표시 -->
+
+    <h1>📹 유튜브</h1>
+    <input id="youtube-search" placeholder="유튜브 검색어 입력" value="4월은 너의 거짓말 bgm">
+    <button onclick="search()">검색</button>
+
+
+    <script>
+
+        function changeVolume(apiUrl) {
+            fetch(apiUrl)
+                .then(response => response.text())
+                .then(() => updateVolume());
+        }
+
+        function updateVolume() {
+            fetch('/volume')
+                .then(response => response.text())
+                .then(volume => {
+                    document.getElementById('volume').innerText = volume;
+                });
+        }
+
+
+        async function cancel(){
+            await fetch('/cancel');
+            alert('종료 취소');
+        }
+
+
+        // shutdown 버튼 event
+        async function shutdown(){
+            let sec = document.getElementById("shutdown-time").value;
+            if (sec && !isNaN(sec) && sec > 0) {
+                const result = await fetch(`/shutdown/${sec}`).then(a=>a.text());
+                alert(result);
+                // startTimer(sec);
+            } else {
+                alert("숫자 값을 입력해주세요! (양수)");
+            }
+        }
+
+
+
+
+        // 서버와 연결
+        // const socket = new WebSocket('ws://localhost:3000'); // 모바일 적용 안됨
+        const socket = new WebSocket(`ws://${window.location.hostname}:3000/`);
+
+        // 서버로부터 메시지 수신
+        socket.onmessage = function(event) {
+            document.getElementById('remaining-time').innerText = event.data;
+        };
+
+
+
+        // 유튜브 검색
+        async function search(){
+            let s = document.getElementById('youtube-search').value;
+            fetch(`/youtube/search?term=${s}`)
+            .then(res=>{
+                if(!res.ok){throw new Error('network error');}
+                // return res.json();
+                // alert("검색 완료");
+            })
+            .then(data=>console.log(data))
+            .catch(err=>console.error(err));
+        }
+
+
+        // 엔터 키로 검색/타이머 실행
+        document.getElementById('youtube-search').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                search(); // 엔터 키를 누르면 search() 함수 실행
+            }
+        });
+        document.getElementById('shutdown-time').addEventListener('keypress', function(event){
+            if(event.key==='Enter'){
+                shutdown();
+            }
+        })
+
+
+
+        window.onload = updateVolume; // 페이지 로드 시 볼륨 업데이트
+    </script>
+</body>
+</html>
