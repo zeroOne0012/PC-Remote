@@ -4,41 +4,69 @@ const router = express.Router();
 const puppeteer = require('puppeteer');
 const { exec } = require("child_process"); // 검색만 puppeteer로, 실행은 exec
 
-// let pages=[]
-// let cnt=1;
-let browser;
+let browser = null; // puppetear - 영상 찾기
+let runed=false;
+
+let chromePids = [];
+
+const chromePath = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"; // Windows용 Chrome 경로
+
+function getPids() {
+    return new Promise((resolve, reject) => {
+        exec(`tasklist | findstr chrome.exe`, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error getting process: ${error}`);
+                return;
+            }
+            let pids=[];
+            const lines = stdout.split("\n")
+            for(let line of lines){
+                const divideds = line.split(" ");
+                let pid;
+                for(let d of divideds){
+                    if (d!=""&&!isNaN(Number(d))){
+                        pid=d;
+                        break;
+                    }
+                }
+                if (pid) pids.push(pid);
+            }
+            // console.log("!!!!!!!", pids.length);
+            resolve(pids);
+        });
+    });
+}
+function killChromePids(){
+    for(let pid of chromePids){
+        exec(`taskkill /PID ${pid} /F`, (error,stdout,stderr)=>{
+            if (error) {
+                console.error(`Error killing Chrome process: ${error}`);
+                return;
+            }
+        });
+    }
+}
 
 async function searchYouTube(term) {
-    
     try{
         if(browser) browser.close();
+        if(runed) {
+            try{
+                killChromePids();
+            }catch(e){
+                console.error(e);
+            }
+        }
 
         browser = await puppeteer.launch({ 
             headless: false, 
             defaultViewport: null,
             args: [
-                // '--autoplay-policy=no-user-gesture-required', // 자동 재생 허용
-                // '--disable-background-timer-throttling', // 백그라운드 리소스 제한 해제
-                // '--disable-backgrounding-occluded-windows', // 창이 가려져도 실행 유지
-                // '--disable-renderer-backgrounding', // 렌더링 제한 해제
                 '--start-maximized'
-            ] // 브라우저를 최대화
-            // args: ['--window-size=1920,1080'] // 브라우저 창 크기 설정
+            ] // 브라우저 최대화
         });
 
         const page = await browser.newPage(); // 신규 탭(페이지) 생성
-        // await page.setUserAgent(
-        //     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        // );
-        // await page.setRequestInterception(true);
-        // page.on('request', (req) => {
-        //     if (['image', 'stylesheet', 'font'].includes(req.resourceType())) {
-        //         req.abort(); // 불필요한 리소스 차단
-        //     } else {
-        //         req.continue();
-        //     }
-        // });
-
 
         // 유튜브 열기
         await page.goto(`https://www.youtube.com/results?search_query=${term}`);
@@ -59,35 +87,44 @@ async function searchYouTube(term) {
         const randomVideoUrl = videos[Math.floor(Math.random() * videos.length)];
         console.log(`Selecting video: ${randomVideoUrl}`);
 
-        // // 선택한 영상 클릭
-        // await page.goto(randomVideoUrl);
-        // // 영상이 로드될 때까지 대기
-        // await page.waitForSelector('.html5-video-container');
-        
-        // 웹 브라우저로 유튜브 URL 열기
         browser.close();
         browser=null;
+        const pidsBefore = await getPids();
+        await execPromise(randomVideoUrl);
+        const pidsAfter = await getPids();
+        chromePids = pidsAfter.filter(item => !pidsBefore.includes(item));
+        // console.log("debug1", pidsBefore.length);
+        // console.log("debug2", pidsAfter.length);
+        // console.log("debug3", chromePids.length);
+
+        runed=true;
+    } catch(e){
+        console.error("youtube_api_error: ", e);
+        browser = null;
+        runed=false;
+        chromePids = [];
+    }
+}
+
+function execPromise(randomVideoUrl) {
+    return new Promise((resolve, reject) => {
         exec(`start chrome "${randomVideoUrl}"`, (err, stdout, stderr) => {
             if (err) {
                 console.error(`exec error: ${err}`);
+                reject(err);
                 return;
             }
             console.log(`stdout: ${stdout}`);
             console.error(`stderr: ${stderr}`);
-        });
-
-
-    } catch(e){
-        console.error("youtube_api_error: ", e);
-    }
+            resolve(stdout); // 실행 완료 후 resolve 호출
+        }); // 크롬 새로 실행
+    });
 }
-
 
 router.get("/search", async(req, res)=>{
     const term = req.query.term;
-    console.log(term);
+    console.log("검색어: ", term);
     searchYouTube(term);
-    // res.send(youtube_page);
     res.send("success");
 });
 
